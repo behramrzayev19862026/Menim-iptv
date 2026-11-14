@@ -1,0 +1,64 @@
+YAML
+
+name: Build IPTV Playlist
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Combine country playlists
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          from pathlib import Path
+
+          sources = {
+              "AZ": "https://iptv-org.github.io/iptv/countries/az.m3u",
+              "TR": "https://iptv-org.github.io/iptv/countries/tr.m3u",
+              "RU": "https://iptv-org.github.io/iptv/countries/ru.m3u"
+          }
+
+          output = ["#EXTM3U"]
+
+          for country, url in sources.items():
+              print("Loading:", country)
+              try:
+                  req = urllib.request.Request(
+                      url, headers={"User-Agent": "Mozilla/5.0"}
+                  )
+                  with urllib.request.urlopen(req, timeout=60) as response:
+                      data = response.read().decode("utf-8-sig", "replace")
+
+                  for line in data.splitlines():
+                      line = line.strip()
+                      if line and line != "#EXTM3U":
+                          output.append(line)
+
+              except Exception as error:
+                  print("Error:", country, error)
+
+          if len(output) == 1:
+              raise SystemExit("No channels downloaded")
+
+          Path("playlist.m3u").write_text(
+              "\n".join(output) + "\n", encoding="utf-8"
+          )
+
+          print("Playlist created:", len(output), "lines")
+          PY
+
+      - name: Save playlist
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Update IPTV playlist
